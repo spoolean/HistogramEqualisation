@@ -68,13 +68,12 @@ kernel void local_global(global const uchar* A, global int* H, local int* LH, in
 // This kernal uses the Hillis-Steel Inclusive parralel algorithm. This algortihm,
 // works on global memory but is fast because it does not need to write to a bin more than once,
 // so multiple work items can be performed at once. This cumulative histogram had to be inclusive,
-// so that no intensity values were lost. 
+// so that no intensity values were lost. Moreover, this algorithm is suited to this role as there is more Proccessors than work items (256).
 kernel void cumulativeHistogram(global int* A, global int* B) {
 	int id = get_global_id(0);
 	int N = get_global_size(0);
 	global int* C;
 
-	// 
 	for (int stride = 1; stride < N; stride *= 2) {
 		B[id] = A[id];
 		if (id >= stride)
@@ -99,8 +98,7 @@ kernel void normalise(global int* A, global int* B) {
 // OpenCl kernel which uses the cumalative histogram as a lookup table for the original intensities
 kernel void lookup(global const uchar* A, global const int* B, global uchar* C) {
 	int id = get_global_id(0);
-	int value = A[id];
-	int lookup_value = B[value];
-	// Copy the lookup value to the output image.
-	C[id] = lookup_value;
+	int value = A[id]; // Take the original value. 
+	int lookup_value = B[value]; // Use the orginial intesity as a lookup value in the normalised histogram.
+	C[id] = lookup_value;// Copy the lookup value to the output image.
 }
