@@ -181,6 +181,8 @@ int main(int argc, char **argv) {
 		
 		
 		// 4.4 Timings of the events for each of the kernels.
+		// The events are not used in the final version, but can be used to see the time taken for each kernel.
+		// The events are also used to see the time taken for the entire process.
 		if (image_input.spectrum() == 3) {
 			// If the image had to be converted to RGB then cout how long it took.
 			std::cout << "RGB to greyscale took: " << rgbEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - rgbEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
