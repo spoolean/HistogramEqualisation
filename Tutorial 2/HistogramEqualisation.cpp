@@ -147,12 +147,6 @@ int main(int argc, char **argv) {
 		kernel_cumulativeHistogram.setArg(0, intensityHistogram);
 		kernel_cumulativeHistogram.setArg(1, cumulativeHistogram);
 		queue.enqueueNDRangeKernel(kernel_cumulativeHistogram, cl::NullRange, cl::NDRange(histogramSize), cl::NullRange);
-
-		// Print every value in the cumulative histogram
-		queue.enqueueReadBuffer(cumulativeHistogram, CL_TRUE, 0, histogramSize, &cumulative_histogram[0]);
-		for (int i = 0; i < cumulative_histogram.size(); i++) {
-			std::cout << cumulative_histogram[i] << std::endl;
-		}
 		
 		// Normalise the cumlative histogram to a maximum value of 255
 		cl::Kernel kernel_normaliseHistogram(program, "normalise");
