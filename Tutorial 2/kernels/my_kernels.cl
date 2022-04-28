@@ -26,25 +26,45 @@ kernel void histogram(global const uchar* A, global int* B) {
 	atomic_inc(&B[value]);
 }
 
-//kernel void hist_atomic(global const uchar* A, global int* B, local int* H, int nr_bins) {
-//	int id = get_global_id(0);
-//	int lid = get_local_id(0);
-//	int bin_index = A[id];
-//	//clear the scratch bins
-//	if (lid < nr_bins)
-//		H[lid] = 0;
-//	barrier(CLK_LOCAL_MEM_FENCE);
-//	atomic_inc(&H[bin_index]);
-//	
-//	B[id] = H[lid];
-//}
+kernel void hist_atomic(global const uchar* A, local int* H, int nr_bins) {
+	int id = get_global_id(0);
+	int lid = get_local_id(0);
+	int bin_index = A[id];
+	//clear the scratch bins
+	if (lid < nr_bins)
+		H[lid] = 0;
+	barrier(CLK_LOCAL_MEM_FENCE);
+	atomic_inc(&H[bin_index]);
+}
+
+kernel void local_global(global const uchar* A, global int* H, local int* LH, int nr_bins) {
+	int id = get_global_id(0); int lid = get_local_id(0);
+	int bin_index = A[id];
+	//clear the scratch bins
+	barrier(CLK_LOCAL_MEM_FENCE);
+	atomic_inc(&LH[bin_index]);
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (id < nr_bins) //combine all local hist into a global one
+		atomic_add(&H[id], LH[id]);
+}
 
 // OpenCl kernel which calulates the cumulative histogram from the intensity histogram
+// This kernal uses the Hillis-Steel Inclusive parralel algorithm
 kernel void cumulativeHistogram(global int* A, global int* B) {
 	int id = get_global_id(0);
 	int N = get_global_size(0);
-	for (int i = id + 1; i < N; i++)
-		atomic_add(&B[i], A[id]);
+	global int* C;
+
+	for (int stride = 1; stride < N; stride *= 2) {
+		B[id] = A[id];
+		if (id >= stride)
+			B[id] = A[id] + A[id - stride];
+
+		barrier(CLK_GLOBAL_MEM_FENCE); // sync the step
+
+		C = A; A = B; B = C; // swap A & B between steps
+	}
+
 }
 
 // OpenCl kernel which normalises the cumulative histogram to a maximum value of 255
