@@ -23,5 +23,6 @@
     <ClInclude Include="..\include\CImg.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\..\..\..\..\..\..\Program Files (x86)\OCL_SDK_Light\include\CL\opencl.h" />
   </ItemGroup>
 </Project>

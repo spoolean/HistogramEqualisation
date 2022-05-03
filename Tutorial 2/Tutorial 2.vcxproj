@@ -193,6 +193,7 @@ xcopy /y "..\images\*" "$(OutDir)"</Command>
     <None Include="kernels\my_kernels.cl" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\..\..\..\..\..\..\..\Program Files (x86)\OCL_SDK_Light\include\CL\opencl.h" />
     <ClInclude Include="..\include\CImg.h" />
     <ClInclude Include="..\include\Utils.h" />
   </ItemGroup>

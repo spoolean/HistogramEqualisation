@@ -96,7 +96,6 @@ int main(int argc, char **argv) {
 		int hist = 256;
 		
 		// Vectors
-		vector<unsigned char> output_buffer(image_input.size()); 
 		vector<int> histogram(hist);
 		vector<unsigned char> intensity_map(image_input.size()); // Final output for image reproduction .
 		
@@ -152,7 +151,7 @@ int main(int argc, char **argv) {
 		// This method is much faster than the serial version, as it does not need, 
 		// to lock and unlock the global bins. Instead it uses a local memory buffer to store the local histograms.
 		// This way, only the local bins are locked and unlocked, and the global bins are only locked once to add the local,
-		// histograms together. This algoirthm is 3x faster than the serial version when tested on the large_test image. 
+		// histograms together. This algoirthm is 3x faster than the serial version when tested on the large_test image. */
 		cl::Kernel kernel_atomic_histogram(program, "local_global");
 		kernel_atomic_histogram.setArg(0, initialImageArray);
 		kernel_atomic_histogram.setArg(1, intensityHistogram);
@@ -186,9 +185,9 @@ int main(int argc, char **argv) {
 		
 		
 		// 4.3 Copy the result from device to the host.
-		queue.enqueueReadBuffer(intensityMap, CL_TRUE, 0, output_buffer.size(), &output_buffer.data()[0]);
+		queue.enqueueReadBuffer(intensityMap, CL_TRUE, 0, intensity_map.size(), &intensity_map.data()[0]);
 
-		CImg<unsigned char> output_image(output_buffer.data(), image_input.width(), image_input.height(), image_input.depth(), image_input.spectrum());
+		CImg<unsigned char> output_image(intensity_map.data(), image_input.width(), image_input.height(), image_input.depth(), image_input.spectrum());
 		CImgDisplay disp_output(output_image,"output");
 		
 		
