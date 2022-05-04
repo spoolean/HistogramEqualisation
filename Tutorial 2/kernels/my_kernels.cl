@@ -65,26 +65,73 @@ kernel void local_global(global const uchar* A, global int* H, local int* LH, in
 }
 
 // OpenCl kernel which calulates the cumulative histogram from the intensity histogram.
-// This kernal uses the Hillis-Steel Inclusive parralel algorithm. This algortihm,
-// works on global memory but is fast because it does not need to write to a bin more than once,
-// so multiple work items can be performed at once. This cumulative histogram had to be inclusive,
-// so that no intensity values were lost. Moreover, this algorithm is suited to this role as there is more Proccessors than work items (256).
+// This kernal uses the Hillis-Steel Inclusive parralel algorithm. This algorithm has been made efficient using 2 local memory buffers.
+// This cumulative histogram had to be inclusive so that no intensity values were lost. Moreover, this algorithm is suited to this role as there is more Proccessors than work items (256).
 // A Blelloch scan is exclusive and so each intensity value is not matched one to one in the histogram. Each value will be shifted over by 2-3 values,
 // making the image more bright than in should be. 
-kernel void cumulativeHistogram(global int* A, global int* B) {
+kernel void cumulativeHistogram(global int* A, global int* B, local int* scratch_1, local int* scratch_2) {
+	int id = get_global_id(0);
+	int lid = get_local_id(0);
+	int N = get_local_size(0);
+	local int* scratch_3;//used for buffer swap
+
+	//cache all N values from global memory to local memory
+	scratch_1[lid] = A[id];
+
+	barrier(CLK_LOCAL_MEM_FENCE);//wait for all local threads to finish copying from global to local memory
+
+	for (int i = 1; i < N; i *= 2) {
+		if (lid >= i)
+			scratch_2[lid] = scratch_1[lid] + scratch_1[lid - i];
+		else
+			scratch_2[lid] = scratch_1[lid];
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		//buffer swap
+		scratch_3 = scratch_2;
+		scratch_2 = scratch_1;
+		scratch_1 = scratch_3;
+	}
+
+	//copy the cache to output array
+	B[id] = scratch_1[lid];
+}
+
+// OpenCL kerenl that calculates the cumulative histogram using a Blelloch exclusive scan pattern. 
+// This is not as efficient as it is using global memory and it is also exclusive, 
+// meaning the values do not match to their bin one to one.
+kernel void blellochCumulative(global int* A, global int* B) {
 	int id = get_global_id(0);
 	int N = get_global_size(0);
-	global int* C;
+	int t;
 
+	//up-sweep
 	for (int stride = 1; stride < N; stride *= 2) {
-		B[id] = A[id];
-		if (id >= stride)
-			B[id] = A[id] + A[id - stride];
+		if (((id + 1) % (stride * 2)) == 0)
+			A[id] += A[id - stride];
 
-		barrier(CLK_GLOBAL_MEM_FENCE); // sync the step
-
-		C = A; A = B; B = C; // swap A & B between steps
+		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
 	}
+
+	//down-sweep
+	if (id == 0)
+		A[N - 1] = 0;//exclusive scan
+
+	barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+
+	for (int stride = N / 2; stride > 0; stride /= 2) {
+		if (((id + 1) % (stride * 2)) == 0) {
+			t = A[id];
+			A[id] += A[id - stride]; //reduce 
+			A[id - stride] = t;		 //move
+		}
+
+		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+	}
+	
+	// Copy A into B
+	B[id] = A[id];
 }
 
 // OpenCl kernel which normalises the cumulative histogram to a maximum value of 255. 

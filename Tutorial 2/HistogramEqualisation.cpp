@@ -3,10 +3,10 @@
 // This assigment was completed with the use of Tutorial 2 as a base and the kernels from Tutorial 3.
 // The code below can be modified by commenting and uncommenting the section related to the histogram algorithm. This can be used to changed it from serial to parrallel.
 // The histogram bin number hist, can be modified. Any value smaller than 256 will make the image darker and darker until it becomes black. Any value larger than 256 will result in an error, because the image cannot represent values larger than 255. 
-// A Hillis-Steel inclusive algorithm was used for the cumulative histogram. This is because the current value needs to be included in the partial reduction 1:1. 
+// Blelloch and Hillis-Steel have been implemented and can be commented and uncommented to allow the use of each. 
 // The parrallel histogram algorithm atomic histogram is a modification of the code provided in the lectures (the lecture code doesn't work) this algorithm is over three times faster than the simple histogram because of it's use of local memory that is much faster. 
 // When used on the test_large file the time for the simple histogram was 31679520ns to complete the kernel, the time for the atomic local histogram: 9825600ns. This resulted in the overall time for all the kernels to be completed to be reduced by half. From 4secs to 2secs. 
-// Aditional features that have been included are the abbility to change the number of bins from 256 -> 128, the abbility to swap the histogram calulation algortihm, and the abbilty to use colour images. 
+// Aditional features that have been included are the abbility to change the number of bins from 256 -> 128 and lower, the ability to swap the histogram calulation algortihm, the abillity to swap multiple scan patterns and the abilty to use colour images. 
 // Moreover, each algorithm used, bar simple histogram, makes use of parrallel features. Finally, each of the kernels proccesing times are relayed to the user in the console, and the histogram equlisation of the image is correct. 
 
 
@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 	//Part 1 - handle command line options such as device selection, verbosity, etc.
 	int platform_id = 0;
 	int device_id = 0;
-	string image_filename = "colour_test.ppm";
+	string image_filename = "test_large.pgm";
 
 	for (int i = 1; i < argc; i++) {
 		if ((strcmp(argv[i], "-p") == 0) && (i < (argc - 1))) { platform_id = atoi(argv[++i]); }
@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
 	//detect any potential exceptions
 	try {
 		bool histFired = false;
+		bool hillisFired = false;
 		CImg<unsigned char> image_input(image_filename.c_str());
 		CImgDisplay disp_input(image_input,"input");
 
@@ -67,6 +68,7 @@ int main(int argc, char **argv) {
 		cl::Event histEvent;
 		cl::Event atomicHistEvent;
 		cl::Event cumulativeHistEvent;
+		cl::Event blellochCumulEvent;
 		cl::Event normaliseHistEvent;
 		cl::Event mapHistEvent;
 
@@ -164,11 +166,24 @@ int main(int argc, char **argv) {
 
 		// Calculate a cumulative histogram of the intensity histogram. 
 		// An inclusive Hillis-Steel scan pattern which keeps the individual parts, 
-		// as it moves along the array. 
+		// as it moves along the array. This one can also be commented out to allow for the blelloch scan below,
+		// comment and uncomment as apropriate. 
+		hillisFired = true;
 		cl::Kernel kernel_cumulativeHistogram(program, "cumulativeHistogram");
 		kernel_cumulativeHistogram.setArg(0, intensityHistogram);
 		kernel_cumulativeHistogram.setArg(1, cumulativeHistogram);
-		queue.enqueueNDRangeKernel(kernel_cumulativeHistogram, cl::NullRange, cl::NDRange(histogramSize), cl::NullRange, NULL, &cumulativeHistEvent);
+		kernel_cumulativeHistogram.setArg(2, cl::Local(histogramSize));
+		kernel_cumulativeHistogram.setArg(3, cl::Local(histogramSize));
+		queue.enqueueNDRangeKernel(kernel_cumulativeHistogram, cl::NullRange, cl::NDRange(histogramSize), cl::NDRange(histogram.size()), NULL, &cumulativeHistEvent);
+		
+		//// A Blelloch exclusive scan pattern which keeps the individual parts,
+		//// but they are stored in the wrong bin (exclusive). This will make the image appear brighter.
+		//// This one can also be commented out to allow for the inclusive Hillis-Steel scan above,
+		//// comment and uncomment as apropriate.
+		//cl::Kernel blellochCumuHistogram(program, "blellochCumulative");
+		//blellochCumuHistogram.setArg(0, intensityHistogram);
+		//blellochCumuHistogram.setArg(1, cumulativeHistogram);
+		//queue.enqueueNDRangeKernel(blellochCumuHistogram, cl::NullRange, cl::NDRange(histogramSize), cl::NullRange, NULL, &blellochCumulEvent);
 		
 		
 		// Normalise the cumlative histogram to a maximum value of 255.
@@ -216,7 +231,17 @@ int main(int argc, char **argv) {
 			std::cout << "Atomic histogram took: " << atomicHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - atomicHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
 		}
 		
-		std::cout << "Cumulative histogram took: " << cumulativeHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - cumulativeHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
+		if (hillisFired)
+		{
+			// If the Hillis-Steel cumulative histogram was calculated, then cout how long it took.
+			std::cout << "Hillis-Steel optimized cumulative histogram took: " << cumulativeHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - cumulativeHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
+		}
+		else
+		{
+			// If the blelloch cumulative histogram was calculated, then cout how long it took.
+			std::cout << "Blelloch cumulative histogram took: " << blellochCumulEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - blellochCumulEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
+		}
+		
 		std::cout << "Normalise histogram took: " << normaliseHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - normaliseHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
 		std::cout << "Lookup table took: " << mapHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>() - mapHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() << "ns to complete" << std::endl;
 		
