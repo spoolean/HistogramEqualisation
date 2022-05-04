@@ -29,10 +29,11 @@ void print_help() {
 }
 
 int main(int argc, char **argv) {
+	
 	//Part 1 - handle command line options such as device selection, verbosity, etc.
 	int platform_id = 0;
 	int device_id = 0;
-	string image_filename = "colour.ppm";
+	string image_filename = "colour_test.ppm";
 
 	for (int i = 1; i < argc; i++) {
 		if ((strcmp(argv[i], "-p") == 0) && (i < (argc - 1))) { platform_id = atoi(argv[++i]); }

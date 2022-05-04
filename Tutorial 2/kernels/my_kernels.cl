@@ -69,6 +69,8 @@ kernel void local_global(global const uchar* A, global int* H, local int* LH, in
 // works on global memory but is fast because it does not need to write to a bin more than once,
 // so multiple work items can be performed at once. This cumulative histogram had to be inclusive,
 // so that no intensity values were lost. Moreover, this algorithm is suited to this role as there is more Proccessors than work items (256).
+// A Blelloch scan is exclusive and so each intensity value is not matched one to one in the histogram. Each value will be shifted over by 2-3 values,
+// making the image more bright than in should be. 
 kernel void cumulativeHistogram(global int* A, global int* B) {
 	int id = get_global_id(0);
 	int N = get_global_size(0);
