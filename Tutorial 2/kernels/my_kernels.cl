@@ -33,7 +33,7 @@ kernel void histogram(global const uchar* A, global int* B) {
 // This kernel is much faster than the above because it calculates multiple local histograms across the device,
 // and combines them at the end into a single global histogram. This greatly reduces the proccessing time because,
 // you do not need to lock and unlock each bin on the global memory (which is slow).
-kernel void local_global(global const uchar* A, global int* H, local int* LH, int A_size, int histBins) {
+kernel void local_global(global const uchar* A, global int* H, local int* LH, int A_size, int histBins, global int* binsizeBuffer) {
 	int gid = get_global_id(0); 
 	int lid = get_local_id(0);
 	int lsize = get_local_size(0);
@@ -51,7 +51,14 @@ kernel void local_global(global const uchar* A, global int* H, local int* LH, in
 	// Compute Local Histogram
 	for (int i = gid; i < A_size; i += gsize)
 	{
-		atomic_inc(&LH[A[i]]);
+		for (size_t j = 0; j < histBins; j++)
+		{
+			if (A[i] >= binsizeBuffer[j] && A[i] < binsizeBuffer[j + 1])
+			{
+				atomic_inc(&LH[j]);
+				break;
+			}
+		}
 	}
 	
 	// Wait for all threads to finish computing local histogram
@@ -136,18 +143,26 @@ kernel void blellochCumulative(global int* A, global int* B) {
 
 // OpenCl kernel which normalises the cumulative histogram to a maximum value of 255. 
 // Take a ratio of the actual value in relation to a maximum 255.
-kernel void normalise(global int* A, global int* B) {
+kernel void normalise(global int* A, global int* B, int histBins) {
 	int id = get_global_id(0);
 	int N = get_global_size(0);
 	int value = A[id];
 	// Normalise the histogram to a maximum of 255.
-	B[id] = value * (double)255 / A[255];
+	B[id] = value * (double)255 / A[histBins - 1];
 }
 
 // OpenCl kernel which uses the cumalative histogram as a lookup table for the original intensities
-kernel void lookup(global const uchar* A, global const int* B, global uchar* C) {
+kernel void lookup(global const uchar* A, global const int* B, global uchar* C, int histBins, global int* binsizeBuffer) {
 	int id = get_global_id(0);
 	int value = A[id]; // Take the original value. 
-	int lookup_value = B[value]; // Use the orginial intesity as a lookup value in the normalised histogram.
-	C[id] = lookup_value;// Copy the lookup value to the output image.
+	
+	for (size_t i = 0; i < histBins; i++)
+	{
+		if (value >= binsizeBuffer[i] && value < binsizeBuffer[i+1])
+		{
+			C[id] = B[i];// Copy the lookup value to the output image.
+		}
+	}
+	
+	
 }

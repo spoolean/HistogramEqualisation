@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 	//Part 1 - handle command line options such as device selection, verbosity, etc.
 	int platform_id = 0;
 	int device_id = 0;
-	string image_filename = "test_large.pgm";
+	string image_filename = "colour_test.ppm";
 
 	for (int i = 1; i < argc; i++) {
 		if ((strcmp(argv[i], "-p") == 0) && (i < (argc - 1))) { platform_id = atoi(argv[++i]); }
@@ -96,11 +96,12 @@ int main(int argc, char **argv) {
 		typedef int mytype;
 
 		// This value can be changed but must be a multiple of 8 and not higher that 256 (An image cannot be represented by values higher than 255). 
-		int hist = 256;
+		int hist = 64;
 		
 		// Vectors
 		vector<int> histogram(hist);
-		vector<unsigned char> intensity_map(image_input.size()); // Final output for image reproduction .
+		vector<unsigned char> intensity_map(image_input.size()); // Final output for image reproduction.
+		vector<int> binvals(hist);
 		
 		// The memory allocation size for the histogram. It has to be in bytes
 		size_t histogramSize = histogram.size() * sizeof(mytype);
@@ -112,14 +113,22 @@ int main(int argc, char **argv) {
 		cl::Buffer cumulativeHistogram(context, CL_MEM_READ_WRITE, histogramSize); // The cumulative histogram
 		cl::Buffer normalisedHistogram(context, CL_MEM_READ_WRITE, histogramSize); // The normalisation of the cumulative histogram
 		cl::Buffer intensityMap(context, CL_MEM_READ_WRITE, image_input.size()); // The output after using the normalised histogram as a LUT
+		cl::Buffer binsizeBuffer(context, CL_MEM_READ_WRITE, histogramSize); // The binsize buffer
+
+		int increments = 256 / hist;
+		for (size_t i = 0; i < hist; i++)
+		{
+			binvals[i] = i * increments;
+		}
 		 
 		// 3.3 Copy image to device memory
 		queue.enqueueWriteBuffer(dev_image_input, CL_TRUE, 0, image_input.size(), &image_input.data()[0]);
+		queue.enqueueWriteBuffer(binsizeBuffer, CL_TRUE, 0, histogramSize, & binvals[0]);
 		queue.enqueueFillBuffer(intensityHistogram, 0, 0, histogramSize);
 
 		// 4 Setup and execute the kernels (i.e. device code)
 		
-		// 4.1 Firstly, change the image to greyscale so the intensitys can be counted
+		// 4.1 Firstly, change the image to greyscale so the intensites can be counted
 		// Check if dev_image_input is RGB.
 		if (image_input.spectrum() == 3) {
 			// If RGB, convert to grayscale.
@@ -148,6 +157,9 @@ int main(int argc, char **argv) {
 		//kernel_histogram.setArg(0, initialImageArray);
 		//kernel_histogram.setArg(1, intensityHistogram);
 		//queue.enqueueNDRangeKernel(kernel_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NullRange, NULL, &histEvent);
+		//// Read to console 
+		//queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		//cout << "Histogram = " << histogram << endl << endl;
 
 
 		// Calculate the intensity histogram using a parrallel method with local memory, and local to global reductions. 
@@ -161,7 +173,11 @@ int main(int argc, char **argv) {
 		kernel_atomic_histogram.setArg(2, cl::Local(histogramSize));
 		kernel_atomic_histogram.setArg(3, (int)image_input.size());
 		kernel_atomic_histogram.setArg(4, hist);
+		kernel_atomic_histogram.setArg(5, binsizeBuffer);
 		queue.enqueueNDRangeKernel(kernel_atomic_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NDRange(histogram.size()), NULL, &atomicHistEvent);
+		// Read to console
+		queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		cout << "Histogram = " << histogram << endl << endl;
 
 
 		// Calculate a cumulative histogram of the intensity histogram. 
@@ -175,6 +191,9 @@ int main(int argc, char **argv) {
 		kernel_cumulativeHistogram.setArg(2, cl::Local(histogramSize));
 		kernel_cumulativeHistogram.setArg(3, cl::Local(histogramSize));
 		queue.enqueueNDRangeKernel(kernel_cumulativeHistogram, cl::NullRange, cl::NDRange(histogramSize), cl::NDRange(histogram.size()), NULL, &cumulativeHistEvent);
+		// Read to console
+		queue.enqueueReadBuffer(cumulativeHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		cout << "Hillis-Steel Cumulative Histogram = " << histogram << endl << endl;
 		
 		//// A Blelloch exclusive scan pattern which keeps the individual parts,
 		//// but they are stored in the wrong bin (exclusive). This will make the image appear brighter.
@@ -184,19 +203,28 @@ int main(int argc, char **argv) {
 		//blellochCumuHistogram.setArg(0, intensityHistogram);
 		//blellochCumuHistogram.setArg(1, cumulativeHistogram);
 		//queue.enqueueNDRangeKernel(blellochCumuHistogram, cl::NullRange, cl::NDRange(histogramSize), cl::NullRange, NULL, &blellochCumulEvent);
+		//// Read to console
+		//queue.enqueueReadBuffer(cumulativeHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		//cout << "Blelloch Cumulative Histogram = " << histogram << endl;
 		
 		
 		// Normalise the cumlative histogram to a maximum value of 255.
 		cl::Kernel kernel_normaliseHistogram(program, "normalise");
 		kernel_normaliseHistogram.setArg(0, cumulativeHistogram);
 		kernel_normaliseHistogram.setArg(1, normalisedHistogram);
+		kernel_normaliseHistogram.setArg(2, hist);
 		queue.enqueueNDRangeKernel(kernel_normaliseHistogram, cl::NullRange, cl::NDRange(256), cl::NullRange, NULL, &normaliseHistEvent);
+		// Read to console
+		queue.enqueueReadBuffer(normalisedHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		cout << "Normalised Histogram = " << histogram << endl << endl;
 
 		// Use the cumulative histogram as a lookup table to map the intensity values to the original image.
 		cl::Kernel kernel_lookup(program, "lookup");
 		kernel_lookup.setArg(0, dev_image_input);
 		kernel_lookup.setArg(1, normalisedHistogram);
 		kernel_lookup.setArg(2, intensityMap);
+		kernel_lookup.setArg(3, hist);
+		kernel_lookup.setArg(4, binsizeBuffer);
 		queue.enqueueNDRangeKernel(kernel_lookup, cl::NullRange, cl::NDRange(image_input.size()), cl::NullRange, NULL, &mapHistEvent);
 		
 		
