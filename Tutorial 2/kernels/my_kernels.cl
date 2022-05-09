@@ -23,10 +23,16 @@ kernel void identity(global const uchar* A, global uchar* B) {
 
 // OpenCl kernel which calculates an intensity histogram for a given image.
 // This kernel is serial and slow. 
-kernel void histogram(global const uchar* A, global int* B) {
+kernel void histogram(global const uchar* A, global int* B, int histSize, int image_size, global int* binsizeBuffer) {
 	int id = get_global_id(0);
 	int value = A[id];
-	atomic_inc(&B[value]);
+	// Loops through the image and if the value is within the range of the histogram, increment the histogram bin.
+	for (int i = 0; i < histSize; i++) {
+		if (value >= binsizeBuffer[i] && value < binsizeBuffer[i + 1]) {
+			B[i]++;
+		}
+	}
+	
 }
 
 // OpenCL kernel which calculates an intensity histogram using local memory.

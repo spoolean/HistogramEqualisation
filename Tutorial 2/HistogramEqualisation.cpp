@@ -95,8 +95,8 @@ int main(int argc, char **argv) {
 		// 3.1 Host Memory Allocation
 		typedef int mytype;
 
-		// This value can be changed but must be a multiple of 8 and not higher that 256 (An image cannot be represented by values higher than 255). 
-		int hist = 64;
+		// This value can be changed but must be a multiple of 256 and not higher that 256 (An image cannot be represented by values higher than 255). 
+		int hist = 4;
 		
 		// Vectors
 		vector<int> histogram(hist);
@@ -149,35 +149,38 @@ int main(int argc, char **argv) {
 		// The first kernel that is commented is a serial version, please comment and uncomment this one, 
 		// and the atomic_histogram to see the difference in parrellelisation.
 
-		//// Calculate an intensity histogram using the atomic_inc method.
-		//// This method is slow and serial as the bins have to be locked and,
-		//// unlocked sequentially per increment.
-		//histFired = true;
-		//cl::Kernel kernel_histogram(program, "histogram");
-		//kernel_histogram.setArg(0, initialImageArray);
-		//kernel_histogram.setArg(1, intensityHistogram);
-		//queue.enqueueNDRangeKernel(kernel_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NullRange, NULL, &histEvent);
-		//// Read to console 
-		//queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
-		//cout << "Histogram = " << histogram << endl << endl;
-
-
-		// Calculate the intensity histogram using a parrallel method with local memory, and local to global reductions. 
-		// This method is much faster than the serial version, as it does not need, 
-		// to lock and unlock the global bins. Instead it uses a local memory buffer to store the local histograms.
-		// This way, only the local bins are locked and unlocked, and the global bins are only locked once to add the local,
-		// histograms together. This algoirthm is 3x faster than the serial version when tested on the large_test image. */
-		cl::Kernel kernel_atomic_histogram(program, "local_global");
-		kernel_atomic_histogram.setArg(0, initialImageArray);
-		kernel_atomic_histogram.setArg(1, intensityHistogram);
-		kernel_atomic_histogram.setArg(2, cl::Local(histogramSize));
-		kernel_atomic_histogram.setArg(3, (int)image_input.size());
-		kernel_atomic_histogram.setArg(4, hist);
-		kernel_atomic_histogram.setArg(5, binsizeBuffer);
-		queue.enqueueNDRangeKernel(kernel_atomic_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NDRange(histogram.size()), NULL, &atomicHistEvent);
-		// Read to console
+		// Calculate an intensity histogram using the atomic_inc method.
+		// This method is slow and serial as the bins have to be locked and,
+		// unlocked sequentially per increment.
+		histFired = true;
+		cl::Kernel kernel_histogram(program, "histogram");
+		kernel_histogram.setArg(0, initialImageArray);
+		kernel_histogram.setArg(1, intensityHistogram);
+		kernel_histogram.setArg(2, hist);
+		kernel_histogram.setArg(3, (int)image_input.size());
+		kernel_histogram.setArg(4, binsizeBuffer);
+		queue.enqueueNDRangeKernel(kernel_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NullRange, NULL, &histEvent);
+		// Read to console 
 		queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
 		cout << "Histogram = " << histogram << endl << endl;
+
+
+		//// Calculate the intensity histogram using a parrallel method with local memory, and local to global reductions. 
+		//// This method is much faster than the serial version, as it does not need, 
+		//// to lock and unlock the global bins. Instead it uses a local memory buffer to store the local histograms.
+		//// This way, only the local bins are locked and unlocked, and the global bins are only locked once to add the local,
+		//// histograms together. This algoirthm is 3x faster than the serial version when tested on the large_test image. */
+		//cl::Kernel kernel_atomic_histogram(program, "local_global");
+		//kernel_atomic_histogram.setArg(0, initialImageArray);
+		//kernel_atomic_histogram.setArg(1, intensityHistogram);
+		//kernel_atomic_histogram.setArg(2, cl::Local(histogramSize));
+		//kernel_atomic_histogram.setArg(3, (int)image_input.size());
+		//kernel_atomic_histogram.setArg(4, hist);
+		//kernel_atomic_histogram.setArg(5, binsizeBuffer);
+		//queue.enqueueNDRangeKernel(kernel_atomic_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NDRange(histogram.size()), NULL, &atomicHistEvent);
+		//// Read to console
+		//queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		//cout << "Histogram = " << histogram << endl << endl;
 
 
 		// Calculate a cumulative histogram of the intensity histogram. 
