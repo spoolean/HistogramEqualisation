@@ -2,11 +2,11 @@
 // Assignment 1
 // This assigment was completed with the use of Tutorial 2 as a base and the kernels from Tutorial 3.
 // The code below can be modified by commenting and uncommenting the section related to the histogram algorithm. This can be used to changed it from serial to parrallel.
-// The histogram bin number hist, can be modified. Any value smaller than 256 will make the image darker and darker until it becomes black. Any value larger than 256 will result in an error, because the image cannot represent values larger than 255. 
+// The histogram bin number hist, can be modified. Multiples of >256 can be used to represent the image with less data. Any value larger than 256 will result in an error, because the image cannot represent values larger than 255. 
 // Blelloch and Hillis-Steel have been implemented and can be commented and uncommented to allow the use of each. 
 // The parrallel histogram algorithm atomic histogram is a modification of the code provided in the lectures (the lecture code doesn't work) this algorithm is over three times faster than the simple histogram because of it's use of local memory that is much faster. 
 // When used on the test_large file the time for the simple histogram was 31679520ns to complete the kernel, the time for the atomic local histogram: 9825600ns. This resulted in the overall time for all the kernels to be completed to be reduced by half. From 4secs to 2secs. 
-// Aditional features that have been included are the abbility to change the number of bins from 256 -> 128 and lower, the ability to swap the histogram calulation algortihm, the abillity to swap multiple scan patterns and the abilty to use colour images. 
+// Aditional features that have been included are the ability to change the number of bins from 256 -> 128 and lower, the ability to swap the histogram calulation algortihm, the abillity to swap multiple scan patterns and the abilty to use colour images. 
 // Moreover, each algorithm used, bar simple histogram, makes use of parrallel features. Finally, each of the kernels proccesing times are relayed to the user in the console, and the histogram equlisation of the image is correct. 
 
 
@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
 		typedef int mytype;
 
 		// This value can be changed but must be a multiple of 256 and not higher that 256 (An image cannot be represented by values higher than 255). 
-		int hist = 4;
+		int hist = 256;
 		
 		// Vectors
 		vector<int> histogram(hist);
@@ -149,38 +149,38 @@ int main(int argc, char **argv) {
 		// The first kernel that is commented is a serial version, please comment and uncomment this one, 
 		// and the atomic_histogram to see the difference in parrellelisation.
 
-		// Calculate an intensity histogram using the atomic_inc method.
-		// This method is slow and serial as the bins have to be locked and,
-		// unlocked sequentially per increment.
-		histFired = true;
-		cl::Kernel kernel_histogram(program, "histogram");
-		kernel_histogram.setArg(0, initialImageArray);
-		kernel_histogram.setArg(1, intensityHistogram);
-		kernel_histogram.setArg(2, hist);
-		kernel_histogram.setArg(3, (int)image_input.size());
-		kernel_histogram.setArg(4, binsizeBuffer);
-		queue.enqueueNDRangeKernel(kernel_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NullRange, NULL, &histEvent);
-		// Read to console 
-		queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
-		cout << "Histogram = " << histogram << endl << endl;
-
-
-		//// Calculate the intensity histogram using a parrallel method with local memory, and local to global reductions. 
-		//// This method is much faster than the serial version, as it does not need, 
-		//// to lock and unlock the global bins. Instead it uses a local memory buffer to store the local histograms.
-		//// This way, only the local bins are locked and unlocked, and the global bins are only locked once to add the local,
-		//// histograms together. This algoirthm is 3x faster than the serial version when tested on the large_test image. */
-		//cl::Kernel kernel_atomic_histogram(program, "local_global");
-		//kernel_atomic_histogram.setArg(0, initialImageArray);
-		//kernel_atomic_histogram.setArg(1, intensityHistogram);
-		//kernel_atomic_histogram.setArg(2, cl::Local(histogramSize));
-		//kernel_atomic_histogram.setArg(3, (int)image_input.size());
-		//kernel_atomic_histogram.setArg(4, hist);
-		//kernel_atomic_histogram.setArg(5, binsizeBuffer);
-		//queue.enqueueNDRangeKernel(kernel_atomic_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NDRange(histogram.size()), NULL, &atomicHistEvent);
-		//// Read to console
+		//// Calculate an intensity histogram using the atomic_inc method.
+		//// This method is slow and serial as the bins have to be locked and,
+		//// unlocked sequentially per increment.
+		//histFired = true;
+		//cl::Kernel kernel_histogram(program, "histogram");
+		//kernel_histogram.setArg(0, initialImageArray);
+		//kernel_histogram.setArg(1, intensityHistogram);
+		//kernel_histogram.setArg(2, hist);
+		//kernel_histogram.setArg(3, (int)image_input.size());
+		//kernel_histogram.setArg(4, binsizeBuffer);
+		//queue.enqueueNDRangeKernel(kernel_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NullRange, NULL, &histEvent);
+		//// Read to console 
 		//queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
 		//cout << "Histogram = " << histogram << endl << endl;
+
+
+		// Calculate the intensity histogram using a parrallel method with local memory, and local to global reductions. 
+		// This method is much faster than the serial version, as it does not need, 
+		// to lock and unlock the global bins. Instead it uses a local memory buffer to store the local histograms.
+		// This way, only the local bins are locked and unlocked, and the global bins are only locked once to add the local,
+		// histograms together. This algoirthm is 3x faster than the serial version when tested on the large_test image. */
+		cl::Kernel kernel_atomic_histogram(program, "local_global");
+		kernel_atomic_histogram.setArg(0, initialImageArray);
+		kernel_atomic_histogram.setArg(1, intensityHistogram);
+		kernel_atomic_histogram.setArg(2, cl::Local(histogramSize));
+		kernel_atomic_histogram.setArg(3, (int)image_input.size());
+		kernel_atomic_histogram.setArg(4, hist);
+		kernel_atomic_histogram.setArg(5, binsizeBuffer);
+		queue.enqueueNDRangeKernel(kernel_atomic_histogram, cl::NullRange, cl::NDRange(image_input.size()), cl::NDRange(histogram.size()), NULL, &atomicHistEvent);
+		// Read to console
+		queue.enqueueReadBuffer(intensityHistogram, CL_TRUE, 0, histogramSize, &histogram[0]);
+		cout << "Histogram = " << histogram << endl << endl;
 
 
 		// Calculate a cumulative histogram of the intensity histogram. 
@@ -278,7 +278,7 @@ int main(int argc, char **argv) {
 		
 		// Add all start and end times together to get the total time.
 		cl_ulong commandStart = (image_input.spectrum() == 3) ? rgbEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>() : greyEvent.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-		std::cout << "Total time for the kernels to execute from start to finish was: " <<  (float)(mapHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>()-commandStart)/10000000 << "s to complete" << std::endl;
+		std::cout << "Total time for the kernels to execute from start to finish was: " <<  (float)(mapHistEvent.getProfilingInfo<CL_PROFILING_COMMAND_END>()-commandStart)/1000000000 << "s to complete" << std::endl;
 
  		while (!disp_input.is_closed() && !disp_output.is_closed()
 			&& !disp_input.is_keyESC() && !disp_output.is_keyESC()) {
